@@ -22,6 +22,8 @@ import org.opencv.core.Scalar;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import frc686.reference.Controller;
+import edu.wpi.first.wpilibj.Servo;
+
 
 public class Robot extends SampleRobot 
 {
@@ -50,7 +52,7 @@ public class Robot extends SampleRobot
 	double centerX = 0.0;
 	final Object imgLock = new Object();
 	int counter = 0;
-
+	Servo cameraServo;
 	
 	
     public Robot()
@@ -72,6 +74,7 @@ public class Robot extends SampleRobot
         switch2 = false;
         switch3 = false;
         selection = 0;
+        cameraServo = new Servo(4);
         
         power = false;
         tick = false;
@@ -87,22 +90,26 @@ public class Robot extends SampleRobot
         dip2 = new DigitalInput(8);
         dip3 = new DigitalInput(7);
         
-     // Get the UsbCamera from CameraServer
-        UsbCamera camera = CameraServer.getInstance().startAutomaticCapture();
-        camera.setBrightness(-255);
-        //camera.setExposureManual(0);
-		// Set the resolution
-		camera.setResolution(640, 480);
+     
       
 		
     }
     
     public void robotInit()
     {
-    	
+    	// Get the UsbCamera from CameraServer
+        UsbCamera camera = CameraServer.getInstance().startAutomaticCapture();
+        camera.setBrightness(0);
+        camera.setExposureManual(0);
+		// Set the resolution
+		camera.setResolution(640, 480);
+		camera.setFPS(100);
+		cameraServo.setAngle(1.3);
+		
     	GripPipeline pipeline = new GripPipeline();
     	visionThread = new Thread(() -> {
-    		Rect r= new Rect();
+    		Rect r = null;
+    		Rect r2 = null;
     		// Get a CvSink. This will capture Mats from the camera
 			CvSink cvSink = CameraServer.getInstance().getVideo();
 			// Setup a CvSource. This will send images back to the Dashboard
@@ -124,22 +131,20 @@ public class Robot extends SampleRobot
 				
 				pipeline.process(mat);
 				
+				//System.out.println(pipeline.filterContoursOutput().size());
+				
 	    		/*System.out.println(pipeline.filterContoursOutput().isEmpty());
 				if(pipeline.checkTest().get(0) == "0") {
 					System.out.println("Nothing to filter");
 					if(pipeline.findContoursOutput().isEmpty() == false) {
 						System.out.println("Problem in findContours");
 					}
-				}
-				
-				*/
-				System.out.println("Counter: " + counter 
-								+"/n" + pipeline.checkTest().toString());
-				/*
-				
-				if(counter%100 == 0) {
-					Imgcodecs.imwrite("C:\\Users\\jeffrey\\GRIP.jpg", mat);					
 				}*/
+				
+				
+				/*System.out.println("Brightness: " + camera.getBrightness() 
+								+"/n" + pipeline.checkTest().toString());*/
+				
 	    		
 				if (!pipeline.filterContoursOutput().isEmpty()) {
 	                r = Imgproc.boundingRect(pipeline.filterContoursOutput().get(0));
@@ -148,15 +153,35 @@ public class Robot extends SampleRobot
 	                }
 	             
 	            } else {
-	            	r = new Rect();
+	            	r = null;
+	            	r2 = null;
 	            }
 				
-				Imgproc.rectangle(mat, r.br(), r.tl(), new Scalar(255, 255, 255), 2);
+				//System.out.println(pipeline.getDualBoxen().size());
 				
+				if(pipeline.getDualBoxen().size() !=0) {
+					r = Imgproc.boundingRect(pipeline.getDualBoxen().get(0));
+					r2 = Imgproc.boundingRect(pipeline.getDualBoxen().get(1));
+					Imgproc.rectangle(mat, r.br(), r2.tl(), new Scalar(255, 255, 255), 2);
+				}
+				
+				
+				//System.out.println(cameraServo.getAngle());
+				
+				
+				/*System.out.println("Distance: " + getDistance()
+								+"\nAngle: " + cameraServo.getAngle());*/
+								
 				// Give the output stream a new image to display
 				outputStream.putFrame(mat);
+	
+				if(r2 != null && r != null){
+					adjustCamera((r.y + r2.br().y)/2, cameraServo.getAngle());
+				}
+				else{				
+					
+				}
 				
-				incrementCounter();
 			}
 		});
 		visionThread.setDaemon(true);
@@ -165,15 +190,35 @@ public class Robot extends SampleRobot
 	
     public void autonomous() 
     {	
+    	myRobot.setSafetyEnabled(false);
     	double centerX;
     	while(isAutonomous()==true){
     	
     	synchronized (imgLock) {
     		centerX = this.centerX;
     	}
-    	double turn = centerX - (480 / 2);
-    	myRobot.arcadeDrive((turn*.0040), -turn * 0.0040);
+    	double turn = centerX - (640 / 2);
+    	
+    	if(turn >= 150){
+    		myRobot.tankDrive((turn*.0025), -turn * 0.0025);
     	}
+    	   	
+    	if(turn < 150 && turn > 0){
+    		myRobot.tankDrive((turn*.0035), -turn * 0.0035);
+    	}
+    	
+    	if(turn < 0 && turn > -150){
+    		myRobot.tankDrive((turn*.0035), -turn * 0.0035);
+    	}
+    	
+    	if(turn <= -150){
+    		myRobot.tankDrive((turn*.0025), -turn * 0.0025);
+    	}
+    	   	
+    	
+    	
+    	//System.out.println(turn);
+    }
     	/*double init;
     	selectAuto();
 		switch (selection)
@@ -850,6 +895,36 @@ public class Robot extends SampleRobot
     	counter++;
     }
     
+    public void decrementCounter() {
+    	counter--;
+    }
+    
+    public void adjustCamera(double yPos, double angle){
+    	//System.out.println(yPos);
+    	
+       		if(yPos > 250){
+        		cameraServo.setAngle(angle-1);
+        	}
+        	
+        	if(yPos < 230){
+        		cameraServo.setAngle(angle+1);
+        	}
+    	}
+    	
+    	
+    
+    
+    public double getDistance()
+    {
+    	double distance = 0;
+    	double theta = Math.abs(3.3 - cameraServo.getAngle());
+    	double Theight = (42.875) - 16.125;
+    	
+    	distance = Theight/Math.tan(Math.PI*(theta)/180);
+    	
+		return distance;
+    
+    }
     
     public void selectAuto()
     {
