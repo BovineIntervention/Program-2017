@@ -30,6 +30,7 @@ public class GripPipeline {
 	private ArrayList<MatOfPoint> findContoursOutput = new ArrayList<MatOfPoint>();
 	private ArrayList<MatOfPoint> filterContoursOutput = new ArrayList<MatOfPoint>();
 	private ArrayList<String> tests = new ArrayList<String>();
+	private ArrayList<MatOfPoint> output = new ArrayList<MatOfPoint>();
 	
 	static {
 		System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
@@ -41,9 +42,9 @@ public class GripPipeline {
 	public void process(Mat source0) {
 		// Step HSL_Threshold0:
 		Mat hslThresholdInput = source0;
-		double[] hslThresholdHue = {79.31654676258992, 180.0};
-		double[] hslThresholdSaturation = {0.0, 148.38737201365186};
-		double[] hslThresholdLuminance = {137.58992805755395, 255.0};
+		double[] hslThresholdHue = {61.51079136690646, 83.24232081911262};
+		double[] hslThresholdSaturation = {68.79496402877697, 255.0};
+		double[] hslThresholdLuminance = {25.22482014388489, 231.0665529010239};
 		hslThreshold(hslThresholdInput, hslThresholdHue, hslThresholdSaturation, hslThresholdLuminance, hslThresholdOutput);
 
 		// Step Find_Contours0:
@@ -53,7 +54,7 @@ public class GripPipeline {
 
 		// Step Filter_Contours0:
 		ArrayList<MatOfPoint> filterContoursContours = findContoursOutput;
-		double filterContoursMinArea = 50.0;
+		double filterContoursMinArea = 30.0;
 		double filterContoursMinPerimeter = 0.0;
 		double filterContoursMinWidth = 0.0;
 		double filterContoursMaxWidth = 1000.0;
@@ -62,10 +63,11 @@ public class GripPipeline {
 		double[] filterContoursSolidity = {0, 100};
 		double filterContoursMaxVertices = 1000000.0;
 		double filterContoursMinVertices = 0.0;
-		double filterContoursMinRatio = 2.80;
-		double filterContoursMaxRatio = 10;
+		double filterContoursMinRatio = 0.0;
+		double filterContoursMaxRatio = 1000.0;
 		filterContours(filterContoursContours, filterContoursMinArea, filterContoursMinPerimeter, filterContoursMinWidth, filterContoursMaxWidth, filterContoursMinHeight, filterContoursMaxHeight, filterContoursSolidity, filterContoursMaxVertices, filterContoursMinVertices, filterContoursMinRatio, filterContoursMaxRatio, filterContoursOutput, tests);
-
+		
+		compare(filterContoursOutput);
 	}
 
 	/**
@@ -94,6 +96,10 @@ public class GripPipeline {
 
 	public ArrayList<String> checkTest() {
 		return tests;
+	}
+	
+	public ArrayList<MatOfPoint> getDualBoxen() {
+		return output;
 	}
 	/**
 	 * Segment an image based on hue, saturation, and luminance ranges.
@@ -163,20 +169,23 @@ public class GripPipeline {
 			final MatOfPoint contour = inputContours.get(i);
 			final Rect bb = Imgproc.boundingRect(contour);
 			if (bb.width < minWidth || bb.width > maxWidth) {
-				tests.add("Width failed: " + bb.width);
+				//tests.add("Width failed: " + bb.width);
 				continue;
 			}
 			if (bb.height < minHeight || bb.height > maxHeight){
-				tests.add("Heigth failed: " + bb.height);
+				//tests.add("Heigth failed: " + bb.height);
 				continue;
 			}
 			final double area = Imgproc.contourArea(contour);
 			if (area < minArea) {
-				tests.add("Area failed: " + area);				
+				
+				if(area != 0){
+					//tests.add("Area failed: " + area);				
+				}
 				continue;
 			}
 			if (Imgproc.arcLength(new MatOfPoint2f(contour.toArray()), true) < minPerimeter) {
-				tests.add("Perimeter failed");
+				//tests.add("Perimeter failed");
 				continue;
 			}
 			Imgproc.convexHull(contour, hull);
@@ -189,25 +198,58 @@ public class GripPipeline {
 			}
 			final double solid = 100 * area / Imgproc.contourArea(mopHull);
 			if (solid < solidity[0] || solid > solidity[1]) {
-				tests.add("Solidity failed");
+				//tests.add("Solidity failed");
 				continue;
 			}
 			if (contour.rows() < minVertexCount || contour.rows() > maxVertexCount)	{
-				tests.add("Vertex count failed");
+				//tests.add("Vertex count failed");
 				continue;
 			}
 			final double ratio = bb.width / (double)bb.height;
 			if (ratio < minRatio || ratio > maxRatio) {
-				tests.add("Ratio failed: " + ratio);
+				//tests.add("Ratio failed: " + ratio);
 				continue;
 			}
 			output.add(contour);
-			tests.add("Contour added successfully!");
+			
 		}
 	}
 
 
-
+public void compare(List<MatOfPoint> compare){
+	output.clear();
+	Rect r1 = new Rect();
+	Rect r2 = new Rect();
+	Rect temp = new Rect();
+	double ratio = .4;
+	int totalHeight = 1;
+	
+	for (int i = 0; i < compare.size() - 1; i++){
+		for (int j = i; j < compare.size(); j++){
+			r1 = Imgproc.boundingRect(compare.get(i));
+			r2 = Imgproc.boundingRect(compare.get(j));
+			
+			if(r1.height < r2.height){
+				temp = r1;
+				r1 = r2;
+				r2 = temp;
+			}
+			
+			totalHeight = Math.abs(r1.y - (r2.y-r2.height));
+			if(totalHeight != 0 ){
+			if((r1.height)/totalHeight < (1.1*ratio) && ((r1.y-r1.height)/totalHeight > (.9*ratio))){
+				if(((double) r1.x/ (double) r2.x) > .75 && ((double) r1.x/ (double) r2.x) < 1.25){
+					//if((r1.width/r2.width) > .5 && (r1.width/r2.width) < 1.5){
+					//System.out.println(r1.x/r2.x);
+						output.add(compare.get(i));
+						output.add(compare.get(j));
+					//}
+				 }
+			   }
+			}
+		}
+	}	
+}
 
 }
 
