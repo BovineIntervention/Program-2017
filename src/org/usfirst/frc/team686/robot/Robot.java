@@ -1,5 +1,6 @@
 package org.usfirst.frc.team686.robot;
 
+import edu.wpi.first.wpilibj.CANSpeedController.ControlMode;
 import edu.wpi.first.wpilibj.CameraServer;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.RobotDrive;
@@ -19,6 +20,7 @@ import org.opencv.imgproc.Imgproc;
 
 import com.ctre.CANTalon;
 import com.ctre.CANTalon.FeedbackDevice;
+import com.ctre.CANTalon.TalonControlMode;
 
 public class Robot extends SampleRobot 
 {
@@ -200,11 +202,22 @@ public class Robot extends SampleRobot
         myRobot.setSafetyEnabled(true);
         boolean climbing = false;
         boolean climbHeld = false;			// whether or not the climb button is currently held down
+        final double STICK_TOLERANCE = .2;  // Dead zone around 0 on the controller so the robot doesn't drift
+        final double RAMP_RATE = 96;       // Absolute minimum of 1.173 Volts per second. Controls how fast the 
         
+        frontLeftDrive.setVoltageRampRate(RAMP_RATE);
+        backLeftDrive.setVoltageRampRate(RAMP_RATE);
+        frontRightDrive.setVoltageRampRate(RAMP_RATE);
+        backRightDrive.setVoltageRampRate(RAMP_RATE);
+        
+        frontLeftDrive.enableBrakeMode(true);
+        backLeftDrive.enableBrakeMode(true);
+        frontRightDrive.enableBrakeMode(true);
+        backRightDrive.enableBrakeMode(true);
         while (isOperatorControl() && isEnabled())			// Do not use loops inside of this while loop 
         {													// Use if statements, or create a new thread if needed
         	// dead zone on controller to prevent drift. Attempts to move the robot only when the joystick axis is pushed beyond a certain point
-        	if ((stick.getRawAxis(Controller.AXIS_LEFT_X) > .1 || stick.getRawAxis(Controller.AXIS_LEFT_X) < -.1) || (stick.getRawAxis(Controller.AXIS_LEFT_Y) > .1 || stick.getRawAxis(Controller.AXIS_LEFT_Y) < -.1) || ((stick.getRawAxis(Controller.AXIS_RIGHT_TRIGGER) - stick.getRawAxis(Controller.AXIS_LEFT_TRIGGER)) > .1 || (stick.getRawAxis(Controller.AXIS_RIGHT_TRIGGER) - stick.getRawAxis(Controller.AXIS_LEFT_TRIGGER)) < -.1))
+        	if ((stick.getRawAxis(Controller.AXIS_LEFT_X) > STICK_TOLERANCE || stick.getRawAxis(Controller.AXIS_LEFT_X) < -STICK_TOLERANCE) || (stick.getRawAxis(Controller.AXIS_LEFT_Y) > STICK_TOLERANCE || stick.getRawAxis(Controller.AXIS_LEFT_Y) < -STICK_TOLERANCE) || ((stick.getRawAxis(Controller.AXIS_RIGHT_TRIGGER) - stick.getRawAxis(Controller.AXIS_LEFT_TRIGGER)) > STICK_TOLERANCE || (stick.getRawAxis(Controller.AXIS_RIGHT_TRIGGER) - stick.getRawAxis(Controller.AXIS_LEFT_TRIGGER)) < -STICK_TOLERANCE))
         	{
         		myRobot.mecanumDrive_Cartesian(stick.getRawAxis(Controller.AXIS_LEFT_X), stick.getRawAxis(Controller.AXIS_LEFT_Y), stick.getRawAxis(Controller.AXIS_RIGHT_TRIGGER) - stick.getRawAxis(Controller.AXIS_LEFT_TRIGGER), 0);
         	}
