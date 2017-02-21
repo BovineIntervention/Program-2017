@@ -9,8 +9,10 @@ public class MotorPorts
 	public final static int CANTALON_DRIVE_BACK_RIGHT = 4;
 	
 	// PWM ports assigned for Sparks
-	public final static int SPARK_INTAKE = 0;
+	public final static int SPARK_INTAKE = 2;
 	public final static int SPARK_CLIMBER = 1;
-	public final static int SPARK_SHOOTER_LIFT = 2;
-	public final static int SPARK_SHOOTER = 3;
+	public final static int SPARK_SHOOTER = 0;
+	
+	// PWM ports assigned for other parts
+	public final static int SERVO_SHOT_GATE = 3;
 }

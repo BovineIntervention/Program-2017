@@ -16,6 +16,8 @@ import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.*;
 import org.opencv.objdetect.*;
 
+import edu.wpi.first.wpilibj.Servo;
+
 /**
 * GripPipeline class.
 *
@@ -249,6 +251,30 @@ public void compare(List<MatOfPoint> compare){
 			}
 		}
 	}	
+}
+
+public void adjustCamera(double yPos, double angle, Servo cameraServo)
+{
+	//System.out.println(yPos);
+    if(yPos > 250)
+    {
+        cameraServo.setAngle(angle-1);
+    }
+    	
+    if(yPos < 230){
+      	cameraServo.setAngle(angle+1);
+    }
+}
+
+public double getDistance(Servo cameraServo)
+{
+	  double distance = 0;
+	  double theta = Math.abs(3.3 - cameraServo.getAngle());
+	  double Theight = (42.875) - 16.125;
+	
+	  distance = Theight/Math.tan(Math.PI*(theta)/180);
+	
+	    return distance;
 }
 
 }

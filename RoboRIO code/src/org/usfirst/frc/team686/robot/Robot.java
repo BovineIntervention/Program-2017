@@ -1,43 +1,44 @@
 package org.usfirst.frc.team686.robot;
 
-import edu.wpi.first.wpilibj.CANSpeedController.ControlMode;
 import edu.wpi.first.wpilibj.CameraServer;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.RobotDrive;
 import edu.wpi.first.wpilibj.SampleRobot;
+import edu.wpi.first.wpilibj.Servo;
 import edu.wpi.first.wpilibj.Spark;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.livewindow.LiveWindow;
+import edu.wpi.first.wpilibj.networktables.NetworkTable;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc686.reference.Controller;
 import frc686.reference.MotorPorts;
-import edu.wpi.cscore.CvSink;
-import edu.wpi.cscore.CvSource;
-import edu.wpi.cscore.UsbCamera;
-import org.opencv.core.Mat;
-import org.opencv.core.Rect;
-import org.opencv.core.Scalar;
-import org.opencv.imgproc.Imgproc;
-
 import com.ctre.CANTalon;
 import com.ctre.CANTalon.FeedbackDevice;
-import com.ctre.CANTalon.TalonControlMode;
 
 public class Robot extends SampleRobot 
 {
     RobotDrive myRobot;
     Joystick stick;
     SendableChooser<String> autoChoice;
+    SendableChooser<String> controlLayout;
+    int[] controlChoice;
+    double[] moveValues;
     
     final String defaultAuto = "Drive forward only";
     final String frontPeg = "Put gear on front peg";
     final String rightPeg = "Puts gear on right peg";
     final String leftPeg = "Puts gear on left peg";
     
+    final String JEFF = "President's choice";
+    final String KAELA = "Rookie's choice";
+    final String DEFAULT = "Programmer's choice";
+    
     CameraServer server;
     Thread visionThread;
-	double centerX;
-	final Object imgLock = new Object();
-	int counter;
+    
+	String key;
+	NetworkTable piTalk;
 	
 	Spark intake;     // non-variable speed
 	Spark climber;   
@@ -49,6 +50,7 @@ public class Robot extends SampleRobot
 	CANTalon backLeftDrive;
 	CANTalon backRightDrive;
 	
+	Servo shotGate;
     public Robot()
     {
     	// Start robot physical mechanics declarations 
@@ -61,23 +63,30 @@ public class Robot extends SampleRobot
         stick = new Joystick(0);
         
         autoChoice = new SendableChooser<>();
+        controlLayout = new SendableChooser<>();
+        /*  integer array used to change the button scheme
+         *  0: Button number for intake
+         *  1: Button number for reversing intake
+         *  2: Button number for climber
+         *  3: Button number for reversing climber
+         *  4: Button number for shooter
+         *  5: Button number for reversing shooter
+         */
+        controlChoice = new int[6];
+        /*  double array used to store axis values
+         *  0: Value of x direction movement
+         *  1: Value of y direction movement
+         *  2: Value of rotational movement
+         */
+        moveValues = new double[3];
+        
+        key = "SmartDashboard";
         
         intake = new Spark(MotorPorts.SPARK_INTAKE);					// Sparks are based on PWM ports, not CAN assignments
         climber = new Spark(MotorPorts.SPARK_CLIMBER);
-        shooterLift = new Spark(MotorPorts.SPARK_SHOOTER_LIFT);
         shooter = new Spark(MotorPorts.SPARK_SHOOTER);
         
-        // Start Jeff B.'s vision code
-        centerX = 0.0;
-        counter = 0;
-        
-        // Get the UsbCamera from CameraServer
-        UsbCamera camera = CameraServer.getInstance().startAutomaticCapture();
-        camera.setBrightness(-255);
-        //camera.setExposureManual(0);
-		// Set the resolution
-		camera.setResolution(640, 480);
-      
+        shotGate = new Servo(MotorPorts.SERVO_SHOT_GATE);
     }
     
     public void robotInit()
@@ -86,79 +95,27 @@ public class Robot extends SampleRobot
     	autoChoice.addObject("Front Peg", frontPeg);
     	autoChoice.addObject("Right Peg", rightPeg);
     	autoChoice.addObject("Left Pin", leftPeg);
+    	SmartDashboard.putData("Auto Choice", autoChoice);
     	
-    	GripPipeline pipeline = new GripPipeline();
-    	visionThread = new Thread(() -> {
-    		Rect r= new Rect();
-    		// Get a CvSink. This will capture Mats from the camera
-			CvSink cvSink = CameraServer.getInstance().getVideo();
-			// Setup a CvSource. This will send images back to the Dashboard
-			CvSource outputStream = CameraServer.getInstance().putVideo("Vision Test", 640, 480);
-			// Mats are very memory expensive. Lets reuse this Mat.
-			Mat mat = new Mat();
-			// +This cannot be 'true'. The program will never exit if it is. This
-			// lets the robot stop this thread when restarting robot code or
-			// deploying.
-			while (!Thread.interrupted()) 
-			{
-				// Tell the CvSink to grab a frame from the camera and put it
-				// in the source mat.  If there is an error notify the output.
-				if (cvSink.grabFrame(mat) == 0) 
-				{
-					// Send the output the error.
-					outputStream.notifyError(cvSink.getError());
-					// skip the rest of the current iteration
-					continue;
-				}
-				
-				pipeline.process(mat);
-				
-	    		/*System.out.println(pipeline.filterContoursOutput().isEmpty());
-				if(pipeline.checkTest().get(0) == "0") {
-					System.out.println("Nothing to filter");
-					if(pipeline.findContoursOutput().isEmpty() == false) {
-						System.out.println("Problem in findContours");
-					}
-				}
-				
-				*/
-				System.out.println("Counter: " + counter 
-								+"/n" + pipeline.checkTest().toString());
-				/*
-				
-				if(counter%100 == 0) {
-					Imgcodecs.imwrite("C:\\Users\\jeffrey\\GRIP.jpg", mat);					
-				}*/
-	    		
-				if (!pipeline.filterContoursOutput().isEmpty()) 
-				{
-	                r = Imgproc.boundingRect(pipeline.filterContoursOutput().get(0));
-	                synchronized (imgLock) 
-	                {
-	                    centerX = r.x + (r.width / 2);
-	                }
-	             
-	            } 
-				else 
-	            {
-	            	r = new Rect();
-	            }
-				
-				Imgproc.rectangle(mat, r.br(), r.tl(), new Scalar(255, 255, 255), 2);
-				
-				// Give the output stream a new image to display
-				outputStream.putFrame(mat);
-			}
-		});
-		visionThread.setDaemon(true);
-		visionThread.start();
+    	controlLayout.addDefault("Testing", DEFAULT);
+    	controlLayout.addObject("Jeff", JEFF);
+    	controlLayout.addObject("Kaela", KAELA);
+    	SmartDashboard.putData("Control Layout", controlLayout);
+    	
+    	NetworkTable.setServerMode();
+    	
+    	piTalk = NetworkTable.getTable(key);
     }
 	
     public void autonomous() 
     {	
+    	myRobot.setSafetyEnabled(false);
     	String autoSelected = autoChoice.getSelected();
-    	double centerX;
-    	while(isAutonomous())
+		
+    	talonAutoSetup();
+    	
+    	double id = 255;
+    	while(isAutonomous() && isEnabled())
     	{
     		switch (autoSelected)
     		{
@@ -175,26 +132,74 @@ public class Robot extends SampleRobot
     			break;
     			
     		case defaultAuto:
-    			
+                
     			break;
     		}
-    		synchronized (imgLock) 
+    		SmartDashboard.putString("Auto Selected", autoSelected);
+    	/*	synchronized (imgLock) 
     		{
     			centerX = this.centerX;
     		}
-    		double turn = centerX - (480 / 2);
+    		turn = centerX - (480 / 2);
     		
     		myRobot.arcadeDrive((turn*.0040), -turn * 0.0040);
+    		*/
+    			
+    		frontLeftDrive.set(1);
+        	frontRightDrive.set(1);
+        	backLeftDrive.set(1);
+        	backRightDrive.set(1);
     		
-    		frontLeftDrive.changeControlMode(CANTalon.TalonControlMode.Position);
-    		frontLeftDrive.setFeedbackDevice(FeedbackDevice.QuadEncoder);
-    		frontLeftDrive.setPosition(2);
+    		SmartDashboard.putNumber("Front Left Wheel Encoder Position", frontLeftDrive.getPosition());
+    		SmartDashboard.putNumber("Front Right Wheel Encoder Position", frontRightDrive.getPosition());
+    		SmartDashboard.putNumber("Back Left Wheel Encoder Position", backLeftDrive.getPosition());
+    		SmartDashboard.putNumber("Back Right Wheel Encoder Position", backRightDrive.getPosition());
+    		
+    		SmartDashboard.putNumber("angle", piTalk.getNumber("angle", 360));
+    		SmartDashboard.putNumber("distance", piTalk.getNumber("distance", 0));
+    		piTalk.putNumber("id", id);
+    		SmartDashboard.putNumber("idTest", piTalk.getNumber("id", 0));
     	}
     }
     
-    public void frontPinAuto()
+    public void talonAutoSetup()
     {
+    	frontLeftDrive.setFeedbackDevice(FeedbackDevice.QuadEncoder);
+		frontRightDrive.setFeedbackDevice(FeedbackDevice.QuadEncoder);
+		frontRightDrive.reverseSensor(true);
+		backLeftDrive.setFeedbackDevice(FeedbackDevice.QuadEncoder);
+		backRightDrive.setFeedbackDevice(FeedbackDevice.QuadEncoder);
+		backRightDrive.reverseSensor(true);
+    		
+		frontLeftDrive.setPID(6, 0, 0, 0, 20, 36, 0);
+	   frontRightDrive.setPID(6, 0, 0, 0, 20, 36, 0);
+	 	 backLeftDrive.setPID(6, 0, 0, 0, 20, 36, 0);
+    	backRightDrive.setPID(6, 0, 0, 0, 20, 36, 0);
     	
+    	frontLeftDrive.changeControlMode(CANTalon.TalonControlMode.Position);
+		frontRightDrive.changeControlMode(CANTalon.TalonControlMode.Position);
+		backLeftDrive.changeControlMode(CANTalon.TalonControlMode.Position);
+		backRightDrive.changeControlMode(CANTalon.TalonControlMode.Position);
+		
+		frontLeftDrive.setPosition(0);
+		frontRightDrive.setPosition(0);
+		backLeftDrive.setPosition(0);
+		backRightDrive.setPosition(0);
+		
+		frontLeftDrive.configEncoderCodesPerRev(255/4);
+		frontRightDrive.configEncoderCodesPerRev(255/4);
+		backLeftDrive.configEncoderCodesPerRev(255/4);
+		backRightDrive.configEncoderCodesPerRev(255/4);
+		
+		frontLeftDrive.configMaxOutputVoltage(14);
+		frontRightDrive.configMaxOutputVoltage(14);
+		backLeftDrive.configMaxOutputVoltage(14);
+		backRightDrive.configMaxOutputVoltage(14);
+		
+		frontLeftDrive.setCloseLoopRampRate(96);
+		frontRightDrive.setCloseLoopRampRate(96);
+		backLeftDrive.setCloseLoopRampRate(96);
+		backRightDrive.setCloseLoopRampRate(96);
     }
 
     public void operatorControl() 
@@ -202,13 +207,20 @@ public class Robot extends SampleRobot
         myRobot.setSafetyEnabled(true);
         boolean climbing = false;
         boolean climbHeld = false;			// whether or not the climb button is currently held down
+        boolean climbingReverse = false;
+        boolean climbHeldReverse = false;
+        boolean shotStart = false;
+        
+        double spinUpTime = 0;
         final double STICK_TOLERANCE = .2;  // Dead zone around 0 on the controller so the robot doesn't drift
         final double RAMP_RATE = 96;       // Absolute minimum of 1.173 Volts per second. Controls how fast the 
         
-        frontLeftDrive.setVoltageRampRate(RAMP_RATE);
-        backLeftDrive.setVoltageRampRate(RAMP_RATE);
-        frontRightDrive.setVoltageRampRate(RAMP_RATE);
-        backRightDrive.setVoltageRampRate(RAMP_RATE);
+        customButtons();
+        
+        frontLeftDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+		frontRightDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+		backLeftDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+		backRightDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
         
         frontLeftDrive.enableBrakeMode(true);
         backLeftDrive.enableBrakeMode(true);
@@ -216,23 +228,34 @@ public class Robot extends SampleRobot
         backRightDrive.enableBrakeMode(true);
         while (isOperatorControl() && isEnabled())			// Do not use loops inside of this while loop 
         {													// Use if statements, or create a new thread if needed
+        	customAxis();
         	// dead zone on controller to prevent drift. Attempts to move the robot only when the joystick axis is pushed beyond a certain point
-        	if ((stick.getRawAxis(Controller.AXIS_LEFT_X) > STICK_TOLERANCE || stick.getRawAxis(Controller.AXIS_LEFT_X) < -STICK_TOLERANCE) || (stick.getRawAxis(Controller.AXIS_LEFT_Y) > STICK_TOLERANCE || stick.getRawAxis(Controller.AXIS_LEFT_Y) < -STICK_TOLERANCE) || ((stick.getRawAxis(Controller.AXIS_RIGHT_TRIGGER) - stick.getRawAxis(Controller.AXIS_LEFT_TRIGGER)) > STICK_TOLERANCE || (stick.getRawAxis(Controller.AXIS_RIGHT_TRIGGER) - stick.getRawAxis(Controller.AXIS_LEFT_TRIGGER)) < -STICK_TOLERANCE))
+        	if ((moveValues[0] > STICK_TOLERANCE || moveValues[0] < -STICK_TOLERANCE) || (moveValues[1] > STICK_TOLERANCE || moveValues[1] < -STICK_TOLERANCE) || (moveValues[2] > STICK_TOLERANCE || moveValues[2] < -STICK_TOLERANCE))
         	{
-        		myRobot.mecanumDrive_Cartesian(stick.getRawAxis(Controller.AXIS_LEFT_X), stick.getRawAxis(Controller.AXIS_LEFT_Y), stick.getRawAxis(Controller.AXIS_RIGHT_TRIGGER) - stick.getRawAxis(Controller.AXIS_LEFT_TRIGGER), 0);
+                frontLeftDrive.setVoltageRampRate(RAMP_RATE);
+                backLeftDrive.setVoltageRampRate(RAMP_RATE);
+                frontRightDrive.setVoltageRampRate(RAMP_RATE);
+                backRightDrive.setVoltageRampRate(RAMP_RATE);
+                
+        		myRobot.mecanumDrive_Cartesian(moveValues[0], moveValues[1], moveValues[2], 0);
         	}
         	else
         	{
+                frontLeftDrive.setVoltageRampRate(1200);
+                backLeftDrive.setVoltageRampRate(1200);
+                frontRightDrive.setVoltageRampRate(1200);
+                backRightDrive.setVoltageRampRate(1200);
+        		
         		myRobot.mecanumDrive_Cartesian(0, 0, 0, 0);
         	}
         	// Run the intake while the left bumper is pressed or reverse it while the right bumper is pressed
-        	if (stick.getRawButton(Controller.BUTTON_LEFT_BUMPER))				// Expect to change this into a toggle
+        	if (stick.getRawButton(controlChoice[0]))				// Expect to change this into a toggle
         	{
         		intake.set(-1.0);		// Motors range in value from -1 to 1 
         	}
         	else
         	{
-        		if (stick.getRawButton(Controller.BUTTON_RIGHT_BUMPER))
+        		if (stick.getRawButton(controlChoice[1]))
         		{
         			intake.set(1.0);
         		}
@@ -243,13 +266,16 @@ public class Robot extends SampleRobot
         	}
         	
         	// Toggle running the climber with the start button
-        	if (stick.getRawButton(Controller.BUTTON_START))
+        	if (stick.getRawButton(controlChoice[2]))
         	{
         		if (!climbing && !climbHeld)
         		{
         			// start custom climbing algorithm using peg detection
         			climbing = true;
+        			climbingReverse = false;
         			climbHeld = true;
+        			
+        			climber.set(1);
         		}
         		else
         		{
@@ -257,7 +283,10 @@ public class Robot extends SampleRobot
         			{
         				// stop detecting peg and attempting to climb
         				climbing = false;
+        				climbingReverse = false;
         				climbHeld = true;
+        				
+        				climber.set(0);
         			}
         		}
         	}
@@ -266,19 +295,144 @@ public class Robot extends SampleRobot
         		climbHeld = false;
         	}
         	
+        	// Toggle running the climber in reverse with the select button
+        	if (stick.getRawButton(controlChoice[3]))
+        	{
+        		if (!climbingReverse && !climbHeldReverse)
+        		{
+        			// start custom climbing algorithm using peg detection
+        			climbing = false;
+        			climbingReverse = true;
+        			climbHeldReverse = true;
+        			
+        			climber.set(-1);
+        		}
+        		else
+        		{
+        			if (climbingReverse && !climbHeldReverse)
+        			{
+        				// stop detecting peg and attempting to climb
+        				climbing = false;
+        				climbingReverse = false;
+        				climbHeldReverse = true;
+        				
+        				climber.set(0);
+        			}
+        		}
+        	}
+        	else
+        	{
+        		climbHeldReverse = false;
+        	}
+        	
         	// Detect the boiler and shoot high goal while the A button is pressed
-        	if (stick.getRawButton(Controller.BUTTON_A))
+        	if (stick.getRawButton(controlChoice[4]))
         	{
         		// start custom shooting algorithm using vision detection and angle adjustment
+        		shooter.set(0.9);
+        		if (!shotStart)
+        		{
+        			spinUpTime = Timer.getFPGATimestamp();
+        		}
+        		
+        		if (spinUpTime + 500 <= Timer.getFPGATimestamp())
+        		{
+        			shotGate.set(1);
+        		}
+        		shotStart = true;
+        	}
+        	else
+        	{
+        		if (stick.getRawButton(controlChoice[5]))
+        		{
+        			shotGate.set(1);
+        		    shooter.set(-.5);
+        		}
+        		else
+        		{
+        			shotGate.set(0);
+        		    shooter.set(0.0);
+        		}
         	}
         }
     }
+    public void customButtons()
+    {
+    	String layoutSelection = controlLayout.getSelected();
+    	
+    	switch (layoutSelection)
+    	{
+    	case JEFF:
+    		controlChoice[0] = Controller.BUTTON_LEFT_BUMPER;
+    		controlChoice[1] = Controller.BUTTON_RIGHT_BUMPER;
+    		controlChoice[2] = Controller.BUTTON_START;
+    		controlChoice[3] = Controller.BUTTON_BACK;
+    		controlChoice[4] = Controller.BUTTON_A;
+    		controlChoice[5] = Controller.BUTTON_B;
+    		break;
+    		
+    	case KAELA:
+    		controlChoice[0] = Controller.BUTTON_LEFT_BUMPER;
+    		controlChoice[1] = Controller.BUTTON_RIGHT_BUMPER;
+    		controlChoice[2] = Controller.BUTTON_START;
+    		controlChoice[3] = Controller.BUTTON_BACK;
+    		controlChoice[4] = Controller.BUTTON_A;
+    		controlChoice[5] = Controller.BUTTON_B;
+    		break;
+    		
+    	case DEFAULT:
+    		controlChoice[0] = Controller.BUTTON_LEFT_BUMPER;
+    		controlChoice[1] = Controller.BUTTON_RIGHT_BUMPER;
+    		controlChoice[2] = Controller.BUTTON_START;
+    		controlChoice[3] = Controller.BUTTON_BACK;
+    		controlChoice[4] = Controller.BUTTON_A;
+    		controlChoice[5] = Controller.BUTTON_B;
+    		break;
+    	}
+    	
+    	SmartDashboard.putString("Layout Selected", layoutSelection);
+    }
         
+    public void customAxis()
+    {
+    	String layoutSelection = controlLayout.getSelected();
+    	
+    	switch (layoutSelection)
+    	{
+    	case JEFF:
+    		moveValues[0] = stick.getRawAxis(Controller.AXIS_LEFT_X);
+    		moveValues[1] = stick.getRawAxis(Controller.AXIS_LEFT_Y);
+    		moveValues[2] = stick.getRawAxis(Controller.AXIS_RIGHT_TRIGGER) - stick.getRawAxis(Controller.AXIS_LEFT_TRIGGER);
+    		break;
+    		
+    	case KAELA:
+    		moveValues[0] = stick.getRawAxis(Controller.AXIS_LEFT_X);
+    		moveValues[1] = stick.getRawAxis(Controller.AXIS_LEFT_Y);
+    		moveValues[2] = stick.getRawAxis(Controller.AXIS_RIGHT_TRIGGER) - stick.getRawAxis(Controller.AXIS_LEFT_TRIGGER);
+    		break;
+    		
+    	case DEFAULT:
+    		moveValues[0] = stick.getRawAxis(Controller.AXIS_LEFT_X);
+    		moveValues[1] = stick.getRawAxis(Controller.AXIS_LEFT_Y);
+    		moveValues[2] = stick.getRawAxis(Controller.AXIS_RIGHT_TRIGGER) - stick.getRawAxis(Controller.AXIS_LEFT_TRIGGER);
+    		break;
+    	}
+    }
+    
     /**
      * Runs during test mode
      */
     public void test() 
     {
+    	boolean wheelPIDTest = false;
     	LiveWindow.run();
+    	
+    	if (wheelPIDTest)
+    	{
+    		frontLeftDrive.setPID(2.5, .019, 95, 0, 20, 36, 0);
+    	    frontRightDrive.setPID(2.1, .017, 80, 0, 20, 36, 0);
+    		backLeftDrive.setPID(2.5, .02, 45, 0, 20, 36, 0);
+        	backRightDrive.setPID(2.5, .02, 60, 0, 20, 36, 0);
+    	}
     }
 }
