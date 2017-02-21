@@ -6,13 +6,9 @@ import logging
 
 logging.basicConfig(level = logging.DEBUG)
 
-NetworkTables.setIPAddress("roborio-686-frc.local") #172.22.11.2
+NetworkTables.setIPAddress("10.6.86.2") #172.22.11.2
 NetworkTables.setClientMode()
-#NetworkTables.initialize()
-
-NetworkTables.initialize(server = 'roborio-686-frc.local')
-
-
+NetworkTables.initialize()
 
 sd = NetworkTables.getTable("SmartDashboard")
 
