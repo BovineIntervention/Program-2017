@@ -25,6 +25,10 @@ public class Robot extends SampleRobot
     int[] controlChoice;
     double[] moveValues;
     
+    double moveDelay;
+    double speedDrift;
+    double spinUpTime;
+    
     final String defaultAuto = "Drive forward only";
     final String frontPeg = "Put gear on front peg";
     final String rightPeg = "Puts gear on right peg";
@@ -72,13 +76,17 @@ public class Robot extends SampleRobot
          *  4: Button number for shooter
          *  5: Button number for reversing shooter
          */
-        controlChoice = new int[6];
+        controlChoice = new int[8];
         /*  double array used to store axis values
          *  0: Value of x direction movement
          *  1: Value of y direction movement
          *  2: Value of rotational movement
          */
         moveValues = new double[3];
+        
+        moveDelay = 0;
+        speedDrift = 0;
+        spinUpTime = 0;
         
         key = "SmartDashboard";
         
@@ -88,7 +96,6 @@ public class Robot extends SampleRobot
         
         shotGate = new Servo(MotorPorts.SERVO_SHOT_GATE);
     }
-    
     public void robotInit()
     {
     	autoChoice.addDefault("Drive Forward", defaultAuto);
@@ -106,7 +113,6 @@ public class Robot extends SampleRobot
     	
     	piTalk = NetworkTable.getTable(key);
     }
-	
     public void autonomous() 
     {	
     	myRobot.setSafetyEnabled(false);
@@ -114,42 +120,135 @@ public class Robot extends SampleRobot
 		
     	talonAutoSetup();
     	
-    	double id = 255;
+    	double turnTime = 0;
+    	int part = 1;
     	while(isAutonomous() && isEnabled())
     	{
     		switch (autoSelected)
     		{
     		case frontPeg:
+    			// Moves the robot backwards from the starting wall to the baseline
+    			frontLeftDrive.set(-6.434); // The equivalent to 121.274 inches according to the circumference of the wheel
+    			frontRightDrive.set(-6.434); // and the number of revolutions the encoders record
+    			backLeftDrive.set(-6.434);
+    			backRightDrive.set(-6.434);
     			
+    			// guides the gear onto the peg
+    			gearAid();
     			break;
     			
     		case rightPeg:
-    			
+    			// Moves the robot backwards from the starting wall to the baseline
+    			if (part == 1)
+    			{
+    				frontLeftDrive.set(-6.434); 
+    				frontRightDrive.set(-6.434);
+    				backLeftDrive.set(-6.434);
+    				backRightDrive.set(-6.434);
+    				
+    				if ((frontLeftDrive.getPosition() + frontRightDrive.getPosition() + backLeftDrive.getPosition() + backRightDrive.getPosition()) / 4 > -6.5 && frontLeftDrive.getPosition() + frontRightDrive.getPosition() + backLeftDrive.getPosition() + backRightDrive.getPosition() / 4 < -6.3)
+    				{
+    					part = 2;
+    				}
+    			}
+    			else
+    			{
+	    			// turns 60 degrees to the right (because the robot is orientated backwards)
+	    			if (part == 2)
+	    			{
+	    				frontLeftDrive.changeControlMode(CANTalon.TalonControlMode.Speed);
+	    				frontRightDrive.changeControlMode(CANTalon.TalonControlMode.Speed);
+	    				backLeftDrive.changeControlMode(CANTalon.TalonControlMode.Speed);
+	    				backRightDrive.changeControlMode(CANTalon.TalonControlMode.Speed);
+	    			
+	    				frontLeftDrive.set(.3611);
+	    				frontRightDrive.set(-.1806);
+	    				backLeftDrive.set(.4583);
+	    				backRightDrive.set(-.3241);
+	    				
+	    				if(turnTime == 0)
+	    				{
+	    					turnTime = Timer.getFPGATimestamp();
+	    				}
+	    				else
+	    				{
+	    					if (turnTime + 3 < Timer.getFPGATimestamp())
+	    					{
+	    						part = 3;
+	    					}
+	    				}
+	    			}
+	    			else
+	    			{
+	    				if (part == 3)
+	    				{
+	    					gearAid();  // guides the gear onto the peg
+	    				}
+	    			}
+    			}
     			break;
     			
     		case leftPeg:
-    			
+    			// Moves the robot backwards from the starting wall to the baseline
+    			if (part == 1)
+    			{
+    				frontLeftDrive.set(-6.434); 
+    				frontRightDrive.set(-6.434);
+    				backLeftDrive.set(-6.434);
+    				backRightDrive.set(-6.434);
+    				
+    				if ((frontLeftDrive.getPosition() + frontRightDrive.getPosition() + backLeftDrive.getPosition() + backRightDrive.getPosition()) / 4 > -6.5 && frontLeftDrive.getPosition() + frontRightDrive.getPosition() + backLeftDrive.getPosition() + backRightDrive.getPosition() / 4 < -6.3)
+    				{
+    					part = 2;
+    				}
+    			}
+    			else
+    			{
+	    			// turns 60 degrees to the left (because the robot is orientated backwards)
+	    			if (part == 2)
+	    			{
+	    				frontLeftDrive.changeControlMode(CANTalon.TalonControlMode.Speed);
+	    				frontRightDrive.changeControlMode(CANTalon.TalonControlMode.Speed);
+	    				backLeftDrive.changeControlMode(CANTalon.TalonControlMode.Speed);
+	    				backRightDrive.changeControlMode(CANTalon.TalonControlMode.Speed);
+	    			
+	    				frontLeftDrive.set(-.3611);
+	    				frontRightDrive.set(.1806);
+	    				backLeftDrive.set(-.4583);
+	    				backRightDrive.set(.3241);
+	    				
+	    				if(turnTime == 0)
+	    				{
+	    					turnTime = Timer.getFPGATimestamp();
+	    				}
+	    				else
+	    				{
+	    					if (turnTime + 3 < Timer.getFPGATimestamp())
+	    					{
+	    						part = 3;
+	    					}
+	    				}
+	    			}
+	    			else
+	    			{
+	    				if (part == 3)
+	    				{
+	    					gearAid();  // guides the gear onto the peg
+	    				}
+	    			}
+    			}
     			break;
     			
     		case defaultAuto:
-                
+    			// Moves the robot backwards over the baseline
+    			frontLeftDrive.set(-7); 
+    			frontRightDrive.set(-7);
+    			backLeftDrive.set(-7);
+    			backRightDrive.set(7);
     			break;
     		}
     		SmartDashboard.putString("Auto Selected", autoSelected);
-    	/*	synchronized (imgLock) 
-    		{
-    			centerX = this.centerX;
-    		}
-    		turn = centerX - (480 / 2);
-    		
-    		myRobot.arcadeDrive((turn*.0040), -turn * 0.0040);
-    		*/
     			
-    		frontLeftDrive.set(1);
-        	frontRightDrive.set(1);
-        	backLeftDrive.set(1);
-        	backRightDrive.set(1);
-    		
     		SmartDashboard.putNumber("Front Left Wheel Encoder Position", frontLeftDrive.getPosition());
     		SmartDashboard.putNumber("Front Right Wheel Encoder Position", frontRightDrive.getPosition());
     		SmartDashboard.putNumber("Back Left Wheel Encoder Position", backLeftDrive.getPosition());
@@ -157,11 +256,8 @@ public class Robot extends SampleRobot
     		
     		SmartDashboard.putNumber("angle", piTalk.getNumber("angle", 360));
     		SmartDashboard.putNumber("distance", piTalk.getNumber("distance", 0));
-    		piTalk.putNumber("id", id);
-    		SmartDashboard.putNumber("idTest", piTalk.getNumber("id", 0));
     	}
     }
-    
     public void talonAutoSetup()
     {
     	frontLeftDrive.setFeedbackDevice(FeedbackDevice.QuadEncoder);
@@ -171,10 +267,10 @@ public class Robot extends SampleRobot
 		backRightDrive.setFeedbackDevice(FeedbackDevice.QuadEncoder);
 		backRightDrive.reverseSensor(true);
     		
-		frontLeftDrive.setPID(6, 0, 0, 0, 20, 36, 0);
-	   frontRightDrive.setPID(6, 0, 0, 0, 20, 36, 0);
-	 	 backLeftDrive.setPID(6, 0, 0, 0, 20, 36, 0);
-    	backRightDrive.setPID(6, 0, 0, 0, 20, 36, 0);
+		frontLeftDrive.setPID(2, .02, .3, 0, 20, 36, 0);
+	    frontRightDrive.setPID(2.5, .02, .25, 0, 50, 48, 0);
+	 	backLeftDrive.setPID(2.55, .0255, .26, 0, 20, 36, 0);
+    	backRightDrive.setPID(2.35, .0235, .235, 0, 20, 36, 0);
     	
     	frontLeftDrive.changeControlMode(CANTalon.TalonControlMode.Position);
 		frontRightDrive.changeControlMode(CANTalon.TalonControlMode.Position);
@@ -195,13 +291,7 @@ public class Robot extends SampleRobot
 		frontRightDrive.configMaxOutputVoltage(14);
 		backLeftDrive.configMaxOutputVoltage(14);
 		backRightDrive.configMaxOutputVoltage(14);
-		
-		frontLeftDrive.setCloseLoopRampRate(96);
-		frontRightDrive.setCloseLoopRampRate(96);
-		backLeftDrive.setCloseLoopRampRate(96);
-		backRightDrive.setCloseLoopRampRate(96);
     }
-
     public void operatorControl() 
     { 
         myRobot.setSafetyEnabled(true);
@@ -210,10 +300,11 @@ public class Robot extends SampleRobot
         boolean climbingReverse = false;
         boolean climbHeldReverse = false;
         boolean shotStart = false;
-        
-        double spinUpTime = 0;
+        boolean override = false;           // removes the ability to manually drive the robot
+        boolean aimbot = false;             // overrides manual shooting
+       
         final double STICK_TOLERANCE = .2;  // Dead zone around 0 on the controller so the robot doesn't drift
-        final double RAMP_RATE = 96;       // Absolute minimum of 1.173 Volts per second. Controls how fast the 
+        final double RAMP_RATE = 96;       // Absolute minimum of 1.173 Volts per second. Controls how fast the voltage increases or decreases to the motor
         
         customButtons();
         
@@ -226,45 +317,50 @@ public class Robot extends SampleRobot
         backLeftDrive.enableBrakeMode(true);
         frontRightDrive.enableBrakeMode(true);
         backRightDrive.enableBrakeMode(true);
+        
         while (isOperatorControl() && isEnabled())			// Do not use loops inside of this while loop 
         {													// Use if statements, or create a new thread if needed
         	customAxis();
+        	//SmartDashboard.putNumber("Front Left Wheel Encoder Position", frontLeftDrive.getPosition());                   // relies on encoders being plugged in
+    		//SmartDashboard.putNumber("Front Right Wheel Encoder Position", frontRightDrive.getPosition());
+    		//SmartDashboard.putNumber("Back Left Wheel Encoder Position", backLeftDrive.getPosition());
+    		//SmartDashboard.putNumber("Back Right Wheel Encoder Position", backRightDrive.getPosition());
+    		
         	// dead zone on controller to prevent drift. Attempts to move the robot only when the joystick axis is pushed beyond a certain point
-        	if ((moveValues[0] > STICK_TOLERANCE || moveValues[0] < -STICK_TOLERANCE) || (moveValues[1] > STICK_TOLERANCE || moveValues[1] < -STICK_TOLERANCE) || (moveValues[2] > STICK_TOLERANCE || moveValues[2] < -STICK_TOLERANCE))
-        	{
+		    if ((!override && (moveValues[0] > STICK_TOLERANCE || moveValues[0] < -STICK_TOLERANCE) || (moveValues[1] > STICK_TOLERANCE || moveValues[1] < -STICK_TOLERANCE) || (moveValues[2] > STICK_TOLERANCE || moveValues[2] < -STICK_TOLERANCE)))
+    	    {
                 frontLeftDrive.setVoltageRampRate(RAMP_RATE);
                 backLeftDrive.setVoltageRampRate(RAMP_RATE);
                 frontRightDrive.setVoltageRampRate(RAMP_RATE);
                 backRightDrive.setVoltageRampRate(RAMP_RATE);
                 
-        		myRobot.mecanumDrive_Cartesian(moveValues[0], moveValues[1], moveValues[2], 0);
-        	}
-        	else
-        	{
+    	    	myRobot.mecanumDrive_Cartesian(moveValues[0], moveValues[1], moveValues[2], 0);
+    	    }
+    	    else
+    	    {
                 frontLeftDrive.setVoltageRampRate(1200);
                 backLeftDrive.setVoltageRampRate(1200);
                 frontRightDrive.setVoltageRampRate(1200);
                 backRightDrive.setVoltageRampRate(1200);
-        		
-        		myRobot.mecanumDrive_Cartesian(0, 0, 0, 0);
-        	}
-        	// Run the intake while the left bumper is pressed or reverse it while the right bumper is pressed
-        	if (stick.getRawButton(controlChoice[0]))				// Expect to change this into a toggle
-        	{
-        		intake.set(-1.0);		// Motors range in value from -1 to 1 
-        	}
-        	else
-        	{
-        		if (stick.getRawButton(controlChoice[1]))
-        		{
-        			intake.set(1.0);
-        		}
-        		else
-        		{
-        			intake.stopMotor();		// Must stop or motor will spin indefinitely
-        		}
-        	}
-        	
+    	    	
+    	    	myRobot.mecanumDrive_Cartesian(0, 0, 0, 0);
+    	    }
+    	    // Run the intake while the left bumper is pressed or reverse it while the right bumper is pressed
+    	    if (stick.getRawButton(controlChoice[0]))				// Expect to change this into a toggle
+    	    {
+    	    	intake.set(-1.0);		// Motors range in value from -1 to 1 
+    	    }
+    	    else
+    	    {
+    	    	if (stick.getRawButton(controlChoice[1]))
+    	    	{
+    	    		intake.set(1.0);
+    	    	}
+    	    	else
+    	    	{
+    	    		intake.stopMotor();		// Must stop or motor will spin indefinitely
+    	    	}
+    	    }
         	// Toggle running the climber with the start button
         	if (stick.getRawButton(controlChoice[2]))
         	{
@@ -325,19 +421,38 @@ public class Robot extends SampleRobot
         		climbHeldReverse = false;
         	}
         	
-        	// Detect the boiler and shoot high goal while the A button is pressed
-        	if (stick.getRawButton(controlChoice[4]))
+        	// for assistance in placing a gear on the peg
+        	if (stick.getRawButton(controlChoice[6]))
         	{
-        		// start custom shooting algorithm using vision detection and angle adjustment
-        		shooter.set(0.9);
+        		frontLeftDrive.setVoltageRampRate(RAMP_RATE);
+                backLeftDrive.setVoltageRampRate(RAMP_RATE);
+                frontRightDrive.setVoltageRampRate(RAMP_RATE);
+                backRightDrive.setVoltageRampRate(RAMP_RATE);
+        		
+                override = true;
+                
+                gearAid();
+        	}
+        	else
+        	{
+        		if (!aimbot)
+        		{
+        			override = false;
+        		}
+        	}
+        	
+        	// shoot high goal while the A button is pressed
+        	if (stick.getRawButton(controlChoice[4]) && !aimbot)
+        	{
+        		shooter.set(-0.755);
         		if (!shotStart)
         		{
         			spinUpTime = Timer.getFPGATimestamp();
         		}
         		
-        		if (spinUpTime + 500 <= Timer.getFPGATimestamp())
+        		if (spinUpTime + .5 <= Timer.getFPGATimestamp()) // timestamp gets values in seconds
         		{
-        			shotGate.set(1);
+        			shotGate.set(0);
         		}
         		shotStart = true;
         	}
@@ -345,15 +460,29 @@ public class Robot extends SampleRobot
         	{
         		if (stick.getRawButton(controlChoice[5]))
         		{
-        			shotGate.set(1);
-        		    shooter.set(-.5);
+        			shotGate.set(0);
+        		    shooter.set(.5);
         		}
         		else
         		{
-        			shotGate.set(0);
+        			shotGate.set(1); // 0 is straight up, 1 is straight down. ~180 degree servo .3
         		    shooter.set(0.0);
         		}
         	}
+        	
+        	// automatically shoot high goal while the X button is pressed
+        	if (stick.getRawButton(controlChoice[7]))
+        	{
+        		shotAid();
+        	
+    			aimbot = true;
+    			override = true;
+        	}
+        	else
+        	{
+        		aimbot = false;
+        	}
+        	SmartDashboard.putNumber("servo angle", shotGate.get());
         }
     }
     public void customButtons()
@@ -363,36 +492,41 @@ public class Robot extends SampleRobot
     	switch (layoutSelection)
     	{
     	case JEFF:
-    		controlChoice[0] = Controller.BUTTON_LEFT_BUMPER;
-    		controlChoice[1] = Controller.BUTTON_RIGHT_BUMPER;
+    		controlChoice[0] = Controller.BUTTON_RIGHT_BUMPER;
+    		controlChoice[1] = Controller.BUTTON_LEFT_BUMPER;
     		controlChoice[2] = Controller.BUTTON_START;
     		controlChoice[3] = Controller.BUTTON_BACK;
     		controlChoice[4] = Controller.BUTTON_A;
     		controlChoice[5] = Controller.BUTTON_B;
+    		controlChoice[6] = Controller.BUTTON_Y;
+    		controlChoice[7] = Controller.BUTTON_X;
     		break;
     		
     	case KAELA:
-    		controlChoice[0] = Controller.BUTTON_LEFT_BUMPER;
-    		controlChoice[1] = Controller.BUTTON_RIGHT_BUMPER;
+    		controlChoice[0] = Controller.BUTTON_RIGHT_BUMPER;
+    		controlChoice[1] = Controller.BUTTON_LEFT_BUMPER;
     		controlChoice[2] = Controller.BUTTON_START;
     		controlChoice[3] = Controller.BUTTON_BACK;
     		controlChoice[4] = Controller.BUTTON_A;
     		controlChoice[5] = Controller.BUTTON_B;
+    		controlChoice[6] = Controller.BUTTON_Y;
+    		controlChoice[7] = Controller.BUTTON_X;
     		break;
     		
     	case DEFAULT:
-    		controlChoice[0] = Controller.BUTTON_LEFT_BUMPER;
-    		controlChoice[1] = Controller.BUTTON_RIGHT_BUMPER;
+    		controlChoice[0] = Controller.BUTTON_RIGHT_BUMPER;
+    		controlChoice[1] = Controller.BUTTON_LEFT_BUMPER;
     		controlChoice[2] = Controller.BUTTON_START;
     		controlChoice[3] = Controller.BUTTON_BACK;
     		controlChoice[4] = Controller.BUTTON_A;
     		controlChoice[5] = Controller.BUTTON_B;
+    		controlChoice[6] = Controller.BUTTON_Y;
+    		controlChoice[7] = Controller.BUTTON_X;
     		break;
     	}
     	
     	SmartDashboard.putString("Layout Selected", layoutSelection);
     }
-        
     public void customAxis()
     {
     	String layoutSelection = controlLayout.getSelected();
@@ -418,7 +552,103 @@ public class Robot extends SampleRobot
     		break;
     	}
     }
-    
+    public void gearAid()
+    {
+    	 double angle;
+         
+    	 //angle = piTalk.getNumber("angle", 0);                              // gets the angle from the network table (pi)
+     	 angle = SmartDashboard.getNumber("angle", 0);          // gets the angle from the SmartDashboard (for testing)
+ 		 SmartDashboard.putNumber("angle", angle);
+ 		 
+ 		if (angle < -10)
+		{
+			myRobot.mecanumDrive_Cartesian(0, .2, -angle/480, 0);
+		}
+		else
+		{
+			if (angle > 10)
+			{
+				myRobot.mecanumDrive_Cartesian(0, .2, angle/480, 0);
+				
+			}
+			else
+			{
+				myRobot.mecanumDrive_Cartesian(0, .4, 0, 0);
+			}
+		}
+    }
+    public void shotAid()
+    {
+    	final double IDEAL_DISTANCE = 144;  // the distance the robot needs to shoot from
+    	double distance = piTalk.getNumber("distance", IDEAL_DISTANCE); 
+    	double angle = -piTalk.getNumber("angle", 0);         // default is 0
+    	double spinUpTime = 0;
+    	boolean timeSet = false;
+    	boolean shotStart = false;
+    	
+    	if (angle < -10)
+		{
+			myRobot.mecanumDrive_Cartesian(0, speedDrift, angle/240, 0);
+			timeSet = false;
+		}
+		else
+		{
+			if (angle > 10)
+			{
+				myRobot.mecanumDrive_Cartesian(0, speedDrift, -angle/240, 0);
+				timeSet = false;
+			}
+			else
+			{
+				if (!timeSet)
+				{
+					moveDelay = Timer.getFPGATimestamp();
+					
+				    frontLeftDrive.setPosition((distance - IDEAL_DISTANCE) / (3.14159 * 6));
+			        frontRightDrive.setPosition((distance - IDEAL_DISTANCE) / (3.14159 * 6));
+				    backLeftDrive.setPosition((distance - IDEAL_DISTANCE) / (3.14159 * 6));
+					backRightDrive.setPosition((distance - IDEAL_DISTANCE) / (3.14159 * 6));
+				}
+				else
+				{
+					if (moveDelay + .2 < Timer.getFPGATimestamp())
+					{
+					frontLeftDrive.changeControlMode(CANTalon.TalonControlMode.Position);
+					frontRightDrive.changeControlMode(CANTalon.TalonControlMode.Position);
+					backLeftDrive.changeControlMode(CANTalon.TalonControlMode.Position);
+					backRightDrive.changeControlMode(CANTalon.TalonControlMode.Position);
+					
+						if (((frontLeftDrive.getPosition() + frontRightDrive.getPosition() + backLeftDrive.getPosition() + backRightDrive.getPosition()) / 4) - .1 < IDEAL_DISTANCE && ((frontLeftDrive.getPosition() + frontRightDrive.getPosition() + backLeftDrive.getPosition() + backRightDrive.getPosition()) / 4) + .1 > IDEAL_DISTANCE)
+						{
+							shooter.set(-0.755);
+			        		if (!shotStart)
+			        		{
+			        			spinUpTime = Timer.getFPGATimestamp();
+			        		}
+			        		
+			        		if (spinUpTime + .5 <= Timer.getFPGATimestamp()) // timestamp gets values in seconds
+			        		{
+			        			shotGate.set(0);
+			        		}
+			        		shotStart = true;
+						}
+						else
+						{
+							frontLeftDrive.set(IDEAL_DISTANCE);
+							frontRightDrive.set(IDEAL_DISTANCE);
+							backLeftDrive.set(IDEAL_DISTANCE);
+							backRightDrive.set(IDEAL_DISTANCE);
+							
+							speedDrift = (frontLeftDrive.get() + frontRightDrive.get() + backLeftDrive.get() + backRightDrive.get()) / 4;
+							
+							shotGate.set(1); // 0 is straight up, 1 is straight down. ~180 degree servo .3
+		        		    shooter.set(0.0);
+						}
+					}
+				}
+			}
+		}
+    }
     /**
      * Runs during test mode
      */
