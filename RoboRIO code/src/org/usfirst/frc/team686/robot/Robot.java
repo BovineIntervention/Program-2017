@@ -1,5 +1,8 @@
 package org.usfirst.frc.team686.robot;
 
+import edu.wpi.cscore.CvSink;
+import edu.wpi.cscore.CvSource;
+import edu.wpi.cscore.UsbCamera;
 import edu.wpi.first.wpilibj.CameraServer;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.RobotDrive;
@@ -13,6 +16,21 @@ import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc686.reference.Controller;
 import frc686.reference.MotorPorts;
+
+import java.io.BufferedOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+
+import org.opencv.core.Mat;
+// left in case a drawing is needed on the driver's vision
+import org.opencv.core.Point;
+import org.opencv.core.Scalar;
+import org.opencv.imgproc.Imgproc;
+
 import com.ctre.CANTalon;
 import com.ctre.CANTalon.FeedbackDevice;
 
@@ -29,6 +47,9 @@ public class Robot extends SampleRobot
     double speedDrift;
     double spinUpTime;
     
+    boolean timeSet;
+	boolean shotStart; 
+    
     final String defaultAuto = "Drive forward only";
     final String frontPeg = "Put gear on front peg";
     final String rightPeg = "Puts gear on right peg";
@@ -38,23 +59,17 @@ public class Robot extends SampleRobot
     final String KAELA = "Rookie's choice";
     final String DEFAULT = "Programmer's choice";
     
-    CameraServer server;
     Thread visionThread;
     
 	String key;
 	NetworkTable piTalk;
 	
-	Spark intake;     // non-variable speed
 	Spark climber;   
-	Spark shooterLift;
-	Spark shooter;
 	
 	CANTalon frontLeftDrive;
 	CANTalon frontRightDrive;
 	CANTalon backLeftDrive;
 	CANTalon backRightDrive;
-	
-	Servo shotGate;
     public Robot()
     {
     	// Start robot physical mechanics declarations 
@@ -65,6 +80,8 @@ public class Robot extends SampleRobot
     	
         myRobot = new RobotDrive(frontLeftDrive, backLeftDrive, frontRightDrive, backRightDrive);  // Drive is based off of CAN speed controllers 1, 2, 3, and 4
         stick = new Joystick(0);
+        
+        driverVision();
         
         autoChoice = new SendableChooser<>();
         controlLayout = new SendableChooser<>();
@@ -86,15 +103,13 @@ public class Robot extends SampleRobot
         
         moveDelay = 0;
         speedDrift = 0;
-        spinUpTime = 0;
+        
+        timeSet = false;
         
         key = "SmartDashboard";
         
-        intake = new Spark(MotorPorts.SPARK_INTAKE);					// Sparks are based on PWM ports, not CAN assignments
         climber = new Spark(MotorPorts.SPARK_CLIMBER);
-        shooter = new Spark(MotorPorts.SPARK_SHOOTER);
         
-        shotGate = new Servo(MotorPorts.SERVO_SHOT_GATE);
     }
     public void robotInit()
     {
@@ -127,12 +142,6 @@ public class Robot extends SampleRobot
     		switch (autoSelected)
     		{
     		case frontPeg:
-    			// Moves the robot backwards from the starting wall to the baseline
-    			frontLeftDrive.set(-6.434); // The equivalent to 121.274 inches according to the circumference of the wheel
-    			frontRightDrive.set(-6.434); // and the number of revolutions the encoders record
-    			backLeftDrive.set(-6.434);
-    			backRightDrive.set(-6.434);
-    			
     			// guides the gear onto the peg
     			gearAid();
     			break;
@@ -161,10 +170,10 @@ public class Robot extends SampleRobot
 	    				backLeftDrive.changeControlMode(CANTalon.TalonControlMode.Speed);
 	    				backRightDrive.changeControlMode(CANTalon.TalonControlMode.Speed);
 	    			
-	    				frontLeftDrive.set(.3611);
-	    				frontRightDrive.set(-.1806);
-	    				backLeftDrive.set(.4583);
-	    				backRightDrive.set(-.3241);
+	    				frontLeftDrive.set(-.3611);
+	    				frontRightDrive.set(.1806);
+	    				backLeftDrive.set(-.4583);
+	    				backRightDrive.set(.3241);
 	    				
 	    				if(turnTime == 0)
 	    				{
@@ -212,10 +221,10 @@ public class Robot extends SampleRobot
 	    				backLeftDrive.changeControlMode(CANTalon.TalonControlMode.Speed);
 	    				backRightDrive.changeControlMode(CANTalon.TalonControlMode.Speed);
 	    			
-	    				frontLeftDrive.set(-.3611);
-	    				frontRightDrive.set(.1806);
-	    				backLeftDrive.set(-.4583);
-	    				backRightDrive.set(.3241);
+	    				frontLeftDrive.set(.3611);
+	    				frontRightDrive.set(-.1806);
+	    				backLeftDrive.set(.4583);
+	    				backRightDrive.set(-.3241);
 	    				
 	    				if(turnTime == 0)
 	    				{
@@ -244,7 +253,7 @@ public class Robot extends SampleRobot
     			frontLeftDrive.set(-7); 
     			frontRightDrive.set(-7);
     			backLeftDrive.set(-7);
-    			backRightDrive.set(7);
+    			backRightDrive.set(-7);
     			break;
     		}
     		SmartDashboard.putString("Auto Selected", autoSelected);
@@ -254,8 +263,7 @@ public class Robot extends SampleRobot
     		SmartDashboard.putNumber("Back Left Wheel Encoder Position", backLeftDrive.getPosition());
     		SmartDashboard.putNumber("Back Right Wheel Encoder Position", backRightDrive.getPosition());
     		
-    		SmartDashboard.putNumber("angle", piTalk.getNumber("angle", 360));
-    		SmartDashboard.putNumber("distance", piTalk.getNumber("distance", 0));
+    		SmartDashboard.putNumber("pegAngle", piTalk.getNumber("pegAngle", -11));
     	}
     }
     public void talonAutoSetup()
@@ -299,9 +307,7 @@ public class Robot extends SampleRobot
         boolean climbHeld = false;			// whether or not the climb button is currently held down
         boolean climbingReverse = false;
         boolean climbHeldReverse = false;
-        boolean shotStart = false;
         boolean override = false;           // removes the ability to manually drive the robot
-        boolean aimbot = false;             // overrides manual shooting
        
         final double STICK_TOLERANCE = .2;  // Dead zone around 0 on the controller so the robot doesn't drift
         final double RAMP_RATE = 96;       // Absolute minimum of 1.173 Volts per second. Controls how fast the voltage increases or decreases to the motor
@@ -321,10 +327,7 @@ public class Robot extends SampleRobot
         while (isOperatorControl() && isEnabled())			// Do not use loops inside of this while loop 
         {													// Use if statements, or create a new thread if needed
         	customAxis();
-        	//SmartDashboard.putNumber("Front Left Wheel Encoder Position", frontLeftDrive.getPosition());                   // relies on encoders being plugged in
-    		//SmartDashboard.putNumber("Front Right Wheel Encoder Position", frontRightDrive.getPosition());
-    		//SmartDashboard.putNumber("Back Left Wheel Encoder Position", backLeftDrive.getPosition());
-    		//SmartDashboard.putNumber("Back Right Wheel Encoder Position", backRightDrive.getPosition());
+        	SmartDashboard.putNumber("pegAngle", piTalk.getNumber("pegAngle", -11));
     		
         	// dead zone on controller to prevent drift. Attempts to move the robot only when the joystick axis is pushed beyond a certain point
 		    if ((!override && (moveValues[0] > STICK_TOLERANCE || moveValues[0] < -STICK_TOLERANCE) || (moveValues[1] > STICK_TOLERANCE || moveValues[1] < -STICK_TOLERANCE) || (moveValues[2] > STICK_TOLERANCE || moveValues[2] < -STICK_TOLERANCE)))
@@ -334,6 +337,11 @@ public class Robot extends SampleRobot
                 frontRightDrive.setVoltageRampRate(RAMP_RATE);
                 backRightDrive.setVoltageRampRate(RAMP_RATE);
                 
+        		frontLeftDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+    			frontRightDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+    			backLeftDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+    			backRightDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+                
     	    	myRobot.mecanumDrive_Cartesian(moveValues[0], moveValues[1], moveValues[2], 0);
     	    }
     	    else
@@ -342,25 +350,15 @@ public class Robot extends SampleRobot
                 backLeftDrive.setVoltageRampRate(1200);
                 frontRightDrive.setVoltageRampRate(1200);
                 backRightDrive.setVoltageRampRate(1200);
+                
+        		frontLeftDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+    			frontRightDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+    			backLeftDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+    			backRightDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
     	    	
     	    	myRobot.mecanumDrive_Cartesian(0, 0, 0, 0);
     	    }
-    	    // Run the intake while the left bumper is pressed or reverse it while the right bumper is pressed
-    	    if (stick.getRawButton(controlChoice[0]))				// Expect to change this into a toggle
-    	    {
-    	    	intake.set(-1.0);		// Motors range in value from -1 to 1 
-    	    }
-    	    else
-    	    {
-    	    	if (stick.getRawButton(controlChoice[1]))
-    	    	{
-    	    		intake.set(1.0);
-    	    	}
-    	    	else
-    	    	{
-    	    		intake.stopMotor();		// Must stop or motor will spin indefinitely
-    	    	}
-    	    }
+    	    
         	// Toggle running the climber with the start button
         	if (stick.getRawButton(controlChoice[2]))
         	{
@@ -435,54 +433,8 @@ public class Robot extends SampleRobot
         	}
         	else
         	{
-        		if (!aimbot)
-        		{
-        			override = false;
-        		}
+    			override = false;
         	}
-        	
-        	// shoot high goal while the A button is pressed
-        	if (stick.getRawButton(controlChoice[4]) && !aimbot)
-        	{
-        		shooter.set(-0.755);
-        		if (!shotStart)
-        		{
-        			spinUpTime = Timer.getFPGATimestamp();
-        		}
-        		
-        		if (spinUpTime + .5 <= Timer.getFPGATimestamp()) // timestamp gets values in seconds
-        		{
-        			shotGate.set(0);
-        		}
-        		shotStart = true;
-        	}
-        	else
-        	{
-        		if (stick.getRawButton(controlChoice[5]))
-        		{
-        			shotGate.set(0);
-        		    shooter.set(.5);
-        		}
-        		else
-        		{
-        			shotGate.set(1); // 0 is straight up, 1 is straight down. ~180 degree servo .3
-        		    shooter.set(0.0);
-        		}
-        	}
-        	
-        	// automatically shoot high goal while the X button is pressed
-        	if (stick.getRawButton(controlChoice[7]))
-        	{
-        		shotAid();
-        	
-    			aimbot = true;
-    			override = true;
-        	}
-        	else
-        	{
-        		aimbot = false;
-        	}
-        	SmartDashboard.putNumber("servo angle", shotGate.get());
         }
     }
     public void customButtons()
@@ -528,6 +480,7 @@ public class Robot extends SampleRobot
     	SmartDashboard.putString("Layout Selected", layoutSelection);
     }
     public void customAxis()
+
     {
     	String layoutSelection = controlLayout.getSelected();
     	
@@ -554,100 +507,71 @@ public class Robot extends SampleRobot
     }
     public void gearAid()
     {
-    	 double angle;
-         
-    	 //angle = piTalk.getNumber("angle", 0);                              // gets the angle from the network table (pi)
-     	 angle = SmartDashboard.getNumber("angle", 0);          // gets the angle from the SmartDashboard (for testing)
- 		 SmartDashboard.putNumber("angle", angle);
- 		 
- 		if (angle < -10)
+     	 double angle = piTalk.getNumber("pegAngle", 0);
+    	 //double angle = SmartDashboard.getNumber("angle", 0);          // gets the angle from the SmartDashboard (for testing)
+     	double turn = 0;
+ 		SmartDashboard.putNumber("angle", angle);
+ 		
+ 		frontLeftDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+		frontRightDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+		backLeftDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+		backRightDrive.changeControlMode(CANTalon.TalonControlMode.PercentVbus);
+		
+		if (angle > 120)
 		{
-			myRobot.mecanumDrive_Cartesian(0, .2, -angle/480, 0);
+			turn = angle/240;
 		}
 		else
 		{
-			if (angle > 10)
-			{
-				myRobot.mecanumDrive_Cartesian(0, .2, angle/480, 0);
-				
-			}
-			else
-			{
-				myRobot.mecanumDrive_Cartesian(0, .4, 0, 0);
-			}
+			turn = Math.max(-1.0, Math.min(1.0, (piTalk.getNumber("pegAngle", 0)))/60);
+		}
+		
+ 		if (angle < 10 && angle > -10 )
+		{
+ 			myRobot.mecanumDrive_Cartesian(0, .2, 0, 0);
+		}
+ 		else
+		{
+ 			myRobot.mecanumDrive_Cartesian(0, .2, turn, 0);
 		}
     }
-    public void shotAid()
+    public void driverVision()  // This is taken directly from the intermediate vision sample code
     {
-    	final double IDEAL_DISTANCE = 144;  // the distance the robot needs to shoot from
-    	double distance = piTalk.getNumber("distance", IDEAL_DISTANCE); 
-    	double angle = -piTalk.getNumber("angle", 0);         // default is 0
-    	double spinUpTime = 0;
-    	boolean timeSet = false;
-    	boolean shotStart = false;
-    	
-    	if (angle < -10)
-		{
-			myRobot.mecanumDrive_Cartesian(0, speedDrift, angle/240, 0);
-			timeSet = false;
-		}
-		else
-		{
-			if (angle > 10)
-			{
-				myRobot.mecanumDrive_Cartesian(0, speedDrift, -angle/240, 0);
-				timeSet = false;
-			}
-			else
-			{
-				if (!timeSet)
-				{
-					moveDelay = Timer.getFPGATimestamp();
-					
-				    frontLeftDrive.setPosition((distance - IDEAL_DISTANCE) / (3.14159 * 6));
-			        frontRightDrive.setPosition((distance - IDEAL_DISTANCE) / (3.14159 * 6));
-				    backLeftDrive.setPosition((distance - IDEAL_DISTANCE) / (3.14159 * 6));
-					backRightDrive.setPosition((distance - IDEAL_DISTANCE) / (3.14159 * 6));
+    	visionThread = new Thread(() -> {
+			// Get the UsbCamera from CameraServer
+			UsbCamera camera = CameraServer.getInstance().startAutomaticCapture();
+			// Set the resolution
+			camera.setResolution(320, 240);
+
+			// Get a CvSink. This will capture Mats from the camera
+			CvSink cvSink = CameraServer.getInstance().getVideo();
+			// Setup a CvSource. This will send images back to the Dashboard
+			CvSource outputStream = CameraServer.getInstance().putVideo("Rectangle", 320, 240);
+
+			// Mats are very memory expensive. Lets reuse this Mat.
+			Mat mat = new Mat();
+
+			// This cannot be 'true'. The program will never exit if it is. This
+			// lets the robot stop this thread when restarting robot code or
+			// deploying.
+			while (!Thread.interrupted()) {
+				// Tell the CvSink to grab a frame from the camera and put it
+				// in the source mat.  If there is an error notify the output.
+				if (cvSink.grabFrame(mat) == 0) {
+					// Send the output the error.
+					outputStream.notifyError(cvSink.getError());
+					// skip the rest of the current iteration
+					continue;
 				}
-				else
-				{
-					if (moveDelay + .2 < Timer.getFPGATimestamp())
-					{
-					frontLeftDrive.changeControlMode(CANTalon.TalonControlMode.Position);
-					frontRightDrive.changeControlMode(CANTalon.TalonControlMode.Position);
-					backLeftDrive.changeControlMode(CANTalon.TalonControlMode.Position);
-					backRightDrive.changeControlMode(CANTalon.TalonControlMode.Position);
-					
-						if (((frontLeftDrive.getPosition() + frontRightDrive.getPosition() + backLeftDrive.getPosition() + backRightDrive.getPosition()) / 4) - .1 < IDEAL_DISTANCE && ((frontLeftDrive.getPosition() + frontRightDrive.getPosition() + backLeftDrive.getPosition() + backRightDrive.getPosition()) / 4) + .1 > IDEAL_DISTANCE)
-						{
-							shooter.set(-0.755);
-			        		if (!shotStart)
-			        		{
-			        			spinUpTime = Timer.getFPGATimestamp();
-			        		}
-			        		
-			        		if (spinUpTime + .5 <= Timer.getFPGATimestamp()) // timestamp gets values in seconds
-			        		{
-			        			shotGate.set(0);
-			        		}
-			        		shotStart = true;
-						}
-						else
-						{
-							frontLeftDrive.set(IDEAL_DISTANCE);
-							frontRightDrive.set(IDEAL_DISTANCE);
-							backLeftDrive.set(IDEAL_DISTANCE);
-							backRightDrive.set(IDEAL_DISTANCE);
-							
-							speedDrift = (frontLeftDrive.get() + frontRightDrive.get() + backLeftDrive.get() + backRightDrive.get()) / 4;
-							
-							shotGate.set(1); // 0 is straight up, 1 is straight down. ~180 degree servo .3
-		        		    shooter.set(0.0);
-						}
-					}
-				}
+				// Put a rectangle on the image
+				//Imgproc.rectangle(mat, new Point(100, 100), new Point(400, 400), new Scalar(255, 255, 255), 5);
+				
+				// Give the output stream a new image to display
+				outputStream.putFrame(mat);
 			}
-		}
+		});
+		visionThread.setDaemon(true);
+		visionThread.start();
     }
     /**
      * Runs during test mode
